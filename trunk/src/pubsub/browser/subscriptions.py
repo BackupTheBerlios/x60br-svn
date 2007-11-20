@@ -1,4 +1,5 @@
 import gtk
+import gobject
 
 from twisted.words.protocols.jabber import xmlstream
 from twisted.words.xish import domish
@@ -15,12 +16,12 @@ class NodeSubscriptionsDlg:
         self.component = component
         tree = gtk.glade.XML(GLADE_FILE,"nodeSubscriptionsDlg") 
         self.dlg = tree.get_widget("nodeSubscriptionsDlg") 
-        self.dlg.set_title(node)
+        self.dlg.set_title(node.name)
         view = tree.get_widget("subscriptions_tree")
-        model = gtk.ListStore(str,str)
+        model = gtk.ListStore(gobject.TYPE_PYOBJECT,str,str)
         view.set_model(model)
-        jid_col = gtk.TreeViewColumn("JID",gtk.CellRendererText(),text=0)
-        subs_col = gtk.TreeViewColumn("Subscription",gtk.CellRendererText(),text=1)
+        jid_col = gtk.TreeViewColumn("JID",gtk.CellRendererText(),text=1)
+        subs_col = gtk.TreeViewColumn("Subscription",gtk.CellRendererText(),text=2)
         view.append_column(jid_col)
         view.append_column(subs_col)
         view.set_headers_visible(True)
@@ -33,14 +34,27 @@ class NodeSubscriptionsDlg:
         
         tree.signal_autoconnect({"response" : self._on_response,
                                  "on_subscriptions_tree_button_press_event": self._on_subscriptions_tree_button_press_event})
+        
+        self.mapping = {}
         self.refresh()
         
-    def _on_delete(self):
+        
+    def _get_selected(self):
         model,iter = self.tree_selection.get_selected()
         if iter is not None:
-            jid = model.get_value(iter,0)
-            d = self._send_pubsub_modify_subscription(self.node, jid, 'none')
-            d.addCallback(lambda _ : self.refresh())
+            return model.get_value(iter,0)
+        return None
+    
+    def _on_delete(self):
+        selected = self._get_selected()
+        if selected is not None:
+            d = self.node.remove_subscription(selected)
+            def subscription_deleted(_):
+                iter = self.mapping[selected]
+                self.model.remove(iter)
+                del self.mapping[selected]
+            
+            d.addCallback(subscription_deleted)
             d.addErrback(print_err)
             
     def _on_subscriptions_tree_button_press_event(self, treeview, event):
@@ -66,66 +80,38 @@ class NodeSubscriptionsDlg:
             self.dlg.destroy()
             
     def _on_new_subs(self):
-        print "new subscription"
-        """
-        gladefile = "gui/gui2.glade/gui2.glade.glade"
-        newAffiliationTree = gtk.glade.XML(gladefile,"newAffiliationDlg") 
-        self.newAffDlg =   newAffiliationTree.get_widget("newAffiliationDlg")
-        
-        
+        gladefile = GLADE_FILE
+        newSubscriptionTree = gtk.glade.XML(gladefile,"newSubscriptionDlg") 
+        self.newSubsDlg =   newSubscriptionTree.get_widget("newSubscriptionDlg")
         def on_dlg_response(dlg,resp):
             if resp == gtk.RESPONSE_OK:
-                jid = newAffiliationTree.get_widget('jid').get_text()
-                affiliation = 'owner'
-                if newAffiliationTree.get_widget('publisher').get_active():
-                    affiliation = 'publisher'
-                d = self._send_pubsub_modify_affiliation(self.node, jid, affiliation)
-                d.addCallback(lambda _ : self.refresh())
+                jid = newSubscriptionTree.get_widget('jid').get_text()
+                d = self.node.add_subscription(jid,'subscribed')
+                def subscription_added(subscription):
+                    self.mapping[subscription] = self.model.append((subscription,subscription.jid,subscription.subscription))
+                d.addCallback(subscription_added)
                 d.addErrback(print_err)
             dlg.destroy()
             
-        newAffiliationTree.signal_autoconnect({'response' : on_dlg_response})
-        self.newAffDlg.show()
-        """
+        newSubscriptionTree.signal_autoconnect({'response' : on_dlg_response})
+        self.newSubsDlg.show()
+
     
-    def _send_pubsub_subscriptions_request(self,node):
-        query = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
-        query.addChild(domish.Element((None,'subscriptions'),attribs={'node':node}))
-        iq = xmlstream.IQ(self.xmlstream,"get")
-        iq.addChild(query)
-        print iq.toXml()
-        d =iq.send(to=self.component)
-        print "request enviado"
-        return d
     
-    def _on_subscriptions(self,resp):
-        subscriptions = resp.firstChildElement().firstChildElement()
-        for subscription in subscriptions.elements():
-            self.model.append((subscription['jid'],subscription['subscription']))
         
     def refresh(self):
         self.model.clear()
-        d = self._send_pubsub_subscriptions_request(self.node)
-        d.addCallback(self._on_subscriptions)
+        self.mapping = {}
+        d = self.node.get_subscriptions()
+        
+        def _on_subscriptions(subscriptions):
+            for subscription in subscriptions:
+                self.mapping[subscription] = self.model.append((subscription,subscription.jid,subscription.subscription))
+        
+        d.addCallback(_on_subscriptions)
         d.addErrback(print_err)
         
         
-    def _send_pubsub_modify_subscription(self,node,jid,subscription):
-        print "modify subscriptions"
-        req = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
-        affiliations = domish.Element((None,'subscriptions'),attribs={'node':node})
-        req.addChild(affiliations)
-        affiliations.addChild(domish.Element((None,'subscription'),attribs={
-                                                                       'jid':jid,
-                                                                       'subscription':subscription    
-                                                                           }))
-        
-        iq = xmlstream.IQ(self.xmlstream,"set")
-        iq.addChild(req)
-        print iq.toXml()
-        d =iq.send(to=self.component)
-        print "request enviado"
-        return d
 
         
     def show(self):

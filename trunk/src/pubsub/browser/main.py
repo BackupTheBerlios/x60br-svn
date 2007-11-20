@@ -27,7 +27,7 @@ from pubsub.browser.createnode import CreateNodeDlg
 
         
         
-    
+from pubsub import pubsubapi
 
 
         
@@ -40,9 +40,10 @@ class Browser:
         self.xmlstream = xmlstream
         self.component = component
         
+        self.pubsub = pubsubapi.PubSub(xmlstream, component)
+        
         def create_top_level():
-            dlg = CreateNodeDlg(self,None)
-            dlg.show()
+            self._on_create_on_parent(None)
         
         tree.signal_autoconnect({"window_destroy" : lambda _ : reactor.stop(),
                                  "on_node_tree_button_press_event" : self._on_node_tree_button_press_event,
@@ -68,8 +69,8 @@ class Browser:
         
         node_view.append_column(node_col)
         
-        # model is : (is_collection,icon,name) 
-        self.model = gtk.TreeStore(gobject.TYPE_BOOLEAN,gobject.TYPE_OBJECT, str)
+        # model is : (node,icon,name) 
+        self.model = gtk.TreeStore(gobject.TYPE_PYOBJECT,gobject.TYPE_OBJECT, str)
         node_view.set_model(self.model)
         
         treePopup = gtk.glade.XML(GLADE_FILE,"node_popup") 
@@ -88,13 +89,15 @@ class Browser:
         self.collection_node_pixbuf = gtk.gdk.pixbuf_new_from_file('gui/collection_node.png')
         self.leaf_node_pixbuf = gtk.gdk.pixbuf_new_from_file('gui/leaf_node.png')
     
+    
+        self.mapping = {}
         self.refresh_tree()
         
 
     def _selected_node(self):
         model,iter = self.tree_selection.get_selected()
         if iter is not None:
-            return model.get_value(iter,2)
+            return model.get_value(iter,0)
         return None
             
 
@@ -122,20 +125,20 @@ class Browser:
     def _on_selection_changed(self,tree_selection):
         node = self._selected_node()
         if node is not None:
-            print node
+            print node.name
 
 
     def _on_node_affiliations(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print "affiliations:",selected
+            print "affiliations:",selected.name
             dlg = NodeAffiliationsDlg(self.xmlstream,selected,self.component)
             dlg.show()
             
     def _on_node_subscriptions(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print "affiliations:",selected
+            print "affiliations:",selected.name
             dlg = NodeSubscriptionsDlg(self.xmlstream,selected,self.component)
             dlg.show()
         
@@ -145,7 +148,7 @@ class Browser:
     def _on_configure_node(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print "configuring:",selected
+            print "configuring:",selected.name
             dlg = NodeConfigurationDlg(self.xmlstream,selected,self.component)
             dlg.show()
             
@@ -153,95 +156,76 @@ class Browser:
     def _on_delete_node(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print "deleting:",selected
-            d = self._send_iq_delete_node(selected)
-            d.addCallback(lambda _ : self.refresh_tree())
+            print "deleting:",selected.name
+            d = selected.delete()
+            def node_deleted(_):
+                iter = self.mapping[selected]
+                self.model.remove(iter)
+                del self.mapping[selected]
+            d.addCallback(node_deleted)
             d.addErrback(print_err)
             
 
     def _on_create_node(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print 'creating  on :', selected
-            dlg = CreateNodeDlg(self,selected)
-            dlg.show()
+            print 'creating  on :', selected.name
+            self._on_create_on_parent(selected)
         
+    def _on_create_on_parent(self,parent):
+        def on_response(dlg,response):
+             if response == gtk.RESPONSE_OK:
+                 name = dlg.get_name()
+                 fields = [field.read_to_xml() for field in dlg.get_fields()]
+                    
+                 if dlg.get_leaf():
+                     d = self.pubsub.create_leaf_node(name=name,
+                                              parent_collection=parent,
+                                              configuration_fields=fields) 
+                 else:
+                     d = self.pubsub.create_collection_node(name=name,
+                                                parent_collection=parent,
+                                                configuration_fields=fields)
+                 d.addCallback(lambda node : self.node_created(parent,node))
+                 d.addErrback(print_err)
+
+        dlg = CreateNodeDlg(self,on_response)
+        dlg.show()
         
-        
-    def _send_iq_disco_items(self,node = None):
-        query = domish.Element((DISCO_ITEMS_NS,"query"))
-        if node is not None:
-            query['node'] = node
-        iq = xmlstream.IQ(self.xmlstream,"get")
-        iq.addChild(query)
-        d =iq.send(to=self.component)
-        return d
-  
         
 
-    
-    def _send_iq_delete_node(self,node_name):
-        ps = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
-        ps.addChild(domish.Element((None,'delete'),attribs={'node' : node_name}))
-        iq = xmlstream.IQ(self.xmlstream,"set")
-        iq.addChild(ps)
-        return iq.send(to = self.component)
-        
-        
-    
-    
     def refresh_tree(self):
         self.model.clear()
-        d = self._send_iq_disco_items()
-        d.addCallback(self._on_disco_items_response,None)
+        self.mapping = {}
+        d = self.pubsub.get_root_nodes()
+        
+        def add_nodes(nodes,parent):
+            for node in nodes:
+                if node.type == "leaf":
+                    iter = self.model.append(parent,(node,self.leaf_node_pixbuf,node.name))
+                else:
+                    iter = self.model.append(parent,(node,self.collection_node_pixbuf,node.name))
+                    d = node.get_members()
+                    d.addCallback(add_nodes,iter)
+                    d.addErrback(print_err)
+                self.mapping[node] = iter
+            
+        
+        d.addCallback(add_nodes,None)
         d.addErrback(print_err)
         
+
+    def node_created(self,parent,node):
+        if parent is not None:
+            parent_iter = self.mapping[parent]
+        else:
+            parent_iter = None
+        if node.type == "leaf":
+            self.mapping[node] = self.model.append(parent_iter,(node,self.leaf_node_pixbuf,node.name))
+        else:
+            self.mapping[node] = self.model.append(parent_iter,(node,self.collection_node_pixbuf,node.name))
         
         
-    def _request_node_info(self,node):
-        query = domish.Element((DISCO_INFO_NS,"query"),attribs={'node' : node})
-        iq = xmlstream.IQ(self.xmlstream,"get")
-        iq.addChild(query)
-        return iq.send(to = self.component)
-
-
-    def _on_disco_info_response(self,iq_resp,node,parent):
-        """
-        Add the node to the model.
-        If the node is a collection node, do a disco#items to request  
-        children nodes.
-        """
-        for item in iq_resp.firstChildElement().elements():
-            if item.name == 'identity' and item['category'] == 'pubsub':
-                if item['type'] == 'collection':
-                    iter = self.model.append(parent,(True,self.collection_node_pixbuf,node))
-                    d = self._send_iq_disco_items(node)
-                    d.addCallback(self._on_disco_items_response,iter)
-                    d.addErrback(print_err)
-                elif item['type'] == 'leaf':
-                    self.model.append(parent,(False,self.leaf_node_pixbuf,node))
-                else:
-                    print "Unknown node-type:", item['type']
-                return
-        
-        print "invalid disco info response"
-                
-        
-
-    def _on_disco_items_response(self,iq_resp,parent):
-        """
-        For each node, request the node info
-        """
-        model = self.model
-        for item in iq_resp.firstChildElement().elements():
-            d2 = self._request_node_info(item['node'])
-            d2.addCallback(self._on_disco_info_response,item['node'],parent)
-            d2.addErrback(print_err)
-            
-            
-        
-
-
 
 class Login:
     def __init__(self):        
@@ -257,11 +241,11 @@ class Login:
                                  "close" : lambda _1,_2: reactor.stop()
                                   } )
 
-        #self.username.set_text("pablo")
-        #self.password.set_text("pablo")
-        #self.host.set_text("pablo-desktop")
-        #self.component.set_text("pubsub")
-        #self.port.set_text('5225')
+        self.username.set_text("pablo")
+        self.password.set_text("pablo")
+        self.host.set_text("pablo-desktop")
+        self.component.set_text("pubsub")
+        self.port.set_text('5225')
     
     def run(self):
         self.d = defer.Deferred()

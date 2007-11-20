@@ -10,12 +10,11 @@ from pubsub.browser.fields import field_from_xml
 
 
 class CreateNodeDlg:
-    def __init__(self,mainapp,parent_node):
+    def __init__(self,mainapp,on_response):
         self.xmlstream = mainapp.xmlstream
-        self.parent_node = parent_node
         self.component = mainapp.component
         self.mainapp = mainapp
-        
+        self.on_response = on_response
         tree = gtk.glade.XML(GLADE_FILE,"createNodeDlg") 
         
         tree.signal_autoconnect({"response" : self._on_response,
@@ -30,7 +29,9 @@ class CreateNodeDlg:
         self.node_name = tree.get_widget("node_name")
         self.instant_node = tree.get_widget("instant_node")
     
+        
         self._request_leaf_form()
+        
     
     def show(self):   
         self.dlg.show()
@@ -42,60 +43,25 @@ class CreateNodeDlg:
             self.node_name_box.show()
         
        
-       
-    def _create_node(self):
-        ps = domish.Element((PUBSUB_NS,"pubsub"))
-        create = ps.addElement((None,'create'))
-        
+    def get_name(self): 
         if not self.instant_node.get_active():
-            create['node'] = self.node_name.get_text()
-        
-        conf = ps.addElement((None,'configure'))
-        
-        
-        form = domish.Element((JABBER_X_DATA_NS,'x'), attribs={'type':'submit'})
-        if not self.leaf.get_active(): #collection node
-            field = domish.Element((None,'field'),attribs={'var':'FORM_TYPE' , 'type': 'hidden'})
-            field.addElement((None,'value'),content=PUBSUB_OWNER_NS)
-            form.addChild(field)    
-            field = domish.Element((None,'field'),attribs={'var':'pubsub#node_type'})            
-            field.addElement((None,'value'),content='collection')
-            form.addChild(field)
-        
-        if self.parent_node is not None:
-            field = domish.Element((None,'field'),attribs={'var':'pubsub#collection'})
-            field.addElement((None,'value'),content=self.parent_node)
-            form.addChild(field)
-        
-        
-        
-        for field in self.fields:
-            form.addChild(field.read_to_xml())
-        
-        conf.addChild(form)
-        
-        
-        iq = xmlstream.IQ(self.xmlstream,"set")
-        iq.addChild(ps)
-        
-        print iq.toXml()
-        
-        d = iq.send(to = self.component)
-        
-        def ok(resp):
-            self.mainapp.refresh_tree()
-            self.dlg.destroy()
-        d.addCallback(ok)
-        d.addErrback(print_err)
-    
-        
-    
+            return self.node_name.get_text()
+        else:
+            return None
+
+    def get_leaf(self):
+        return self.leaf.get_active()
+
+    def get_fields(self):
+        return self.fields
+       
         
 
     def _on_response(self,dlg,resp):
-       if resp == gtk.RESPONSE_OK:
-           self._create_node()
-           
+       # 
+       #if resp == gtk.RESPONSE_OK:
+       #    self._create_node()
+       self.on_response(self,resp)    
        self.dlg.destroy()
        
     def _request_leaf_form(self):

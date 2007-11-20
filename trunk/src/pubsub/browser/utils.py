@@ -11,3 +11,9 @@ GLADE_FILE = "gui/gui.glade"
 
 def print_err(err):
     print "error:" ,err
+    
+    
+    
+    
+
+    

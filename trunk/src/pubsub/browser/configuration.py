@@ -20,7 +20,7 @@ class NodeConfigurationDlg:
         self.table = tree.get_widget("table")
         self.component = component
         d = self._send_pubsub_conf_request(node)
-        self.dlg.set_title(node)
+        self.dlg.set_title(node.name)
         d.addCallback(self._on_data_form)
         d.addErrback(print_err)
     
@@ -29,7 +29,7 @@ class NodeConfigurationDlg:
     
     def _send_pubsub_conf_request(self,node):
         query = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
-        query.addChild(domish.Element((None,'configure'),attribs={'node':node}))
+        query.addChild(domish.Element((None,'configure'),attribs={'node':node.name}))
         iq = xmlstream.IQ(self.xmlstream,"get")
         iq.addChild(query)
         d =iq.send(to=self.component)
@@ -91,7 +91,7 @@ class NodeConfigurationDlg:
 
     def _send_pubsub_configurtion(self,fields_xml):
         query = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
-        cfg = domish.Element((None,'configure'),attribs={'node':self.node})
+        cfg = domish.Element((None,'configure'),attribs={'node':self.node.name})
         query.addChild(cfg)
         form = domish.Element((JABBER_X_DATA_NS,'x'),attribs={'type':'submit'})
         cfg.addChild(form)

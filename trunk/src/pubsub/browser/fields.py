@@ -86,7 +86,10 @@ class ListSingle(LabeledField):
                 options.append(str(e.firstChildElement()))
             elif e.name == 'value':
                 self.value = str(e)
-        self.options = options
+        if options == [] : #bug in openfire, pubsub#itemreply whitout <option/> elements
+            self.options = [self.value]
+        else:
+            self.options = options
         
     def get_widget(self):
         self.w= gtk.combo_box_new_text()
