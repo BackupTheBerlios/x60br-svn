@@ -1,0 +1,4 @@
+Twisted   http://twistedmatrix.com/trac/
+pyGTK     http://www.pygtk.org/
+libglade  http://www.jamesh.id.au/software/libglade/
+
