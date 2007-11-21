@@ -25,6 +25,8 @@ class Affiliation:
         return self.xml['affiliation']
     
     
+    
+    
     affiliation = property(get_affiliation,None)
     jid = property(get_jid,None)
         
@@ -41,6 +43,11 @@ class Subscription:
     def get_subscription(self):
         return self.xml['subscription']
     
+    def has_subid(self):
+        return self.xml.hasAttribute('subid')
+    
+    def get_subid(self):
+        return self.xml['subid']
     
     subscription = property(get_subscription,None)
     jid = property(get_jid,None)
@@ -85,6 +92,8 @@ class PubSubNode:
                                                                        'jid':subscription.jid,
                                                                        'subscription':'none'
                                                                            }))
+        if subscription.has_subid():
+            subs['subid'] = subscription.get_subid()
         d = self.pubsub.send_iq("set",req)
         return d
 
@@ -125,7 +134,11 @@ class PubSubNode:
                                                                        'subscription':subscription    
                                                                            }))
         d = self.pubsub.send_iq("set",req)
-        d.addCallback(lambda _ : Subscription(subs))
+        
+        #no subscription information in the response,
+        #so use the submited element
+        d.addCallback(lambda _ : Subscription(subs)) 
+        
         return d
         
     
@@ -264,9 +277,7 @@ class PubSub:
     def _get_node(self,node_name):
         query = domish.Element((DISCO_INFO_NS,"query"),attribs={'node' : node_name})
         d = self.send_iq("get", query)
-        print "_get_node 1"
         def build_node_from_info(resp):
-            print "nuild_from_node_info"
             for item in resp.firstChildElement().elements():
                 if item.name == 'identity' and item['category'] == 'pubsub':
                     if item['type'] == 'collection':
@@ -276,10 +287,8 @@ class PubSub:
                     else:
                         raise Exception("Unknown node-type:", item['type'])
             raise Exception("no node-type information")        
-        print "_get_node 2"
         d.addCallback(build_node_from_info)
         d.addErrback(print_err)
-        print "_get_node 3"
         return d
         
         

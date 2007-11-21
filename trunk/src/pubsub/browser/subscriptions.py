@@ -88,7 +88,11 @@ class NodeSubscriptionsDlg:
                 jid = newSubscriptionTree.get_widget('jid').get_text()
                 d = self.node.add_subscription(jid,'subscribed')
                 def subscription_added(subscription):
-                    self.mapping[subscription] = self.model.append((subscription,subscription.jid,subscription.subscription))
+                    #self.mapping[subscription] = self.model.append((subscription,subscription.jid,subscription.subscription))
+                    #Couldn't simply modify the model, because the responde doesn't include
+                    #a possible subscription id assigned, and that subid is required(at least by openfire) for deleting
+                    #the subscription
+                    self.refresh()
                 d.addCallback(subscription_added)
                 d.addErrback(print_err)
             dlg.destroy()

@@ -113,7 +113,7 @@ class Browser:
                 treeview.grab_focus()
                 treeview.set_cursor( path, col, 0)
                 iter = self.model.get_iter(path)
-                if self.model.get_value(iter,0):
+                if self.model.get_value(iter,0).type == 'collection':
                     self.add_child_menu.show()
                 else:
                     self.add_child_menu.hide()
@@ -131,14 +131,12 @@ class Browser:
     def _on_node_affiliations(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print "affiliations:",selected.name
             dlg = NodeAffiliationsDlg(self.xmlstream,selected,self.component)
             dlg.show()
             
     def _on_node_subscriptions(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print "affiliations:",selected.name
             dlg = NodeSubscriptionsDlg(self.xmlstream,selected,self.component)
             dlg.show()
         
@@ -148,7 +146,6 @@ class Browser:
     def _on_configure_node(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print "configuring:",selected.name
             dlg = NodeConfigurationDlg(self.xmlstream,selected,self.component)
             dlg.show()
             
@@ -156,7 +153,6 @@ class Browser:
     def _on_delete_node(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print "deleting:",selected.name
             d = selected.delete()
             def node_deleted(_):
                 iter = self.mapping[selected]
@@ -169,7 +165,6 @@ class Browser:
     def _on_create_node(self,evt):
         selected = self._selected_node()
         if selected is not None:
-            print 'creating  on :', selected.name
             self._on_create_on_parent(selected)
         
     def _on_create_on_parent(self,parent):

@@ -36,7 +36,6 @@ class NodeConfigurationDlg:
         return d
     
     def _on_data_form(self,resp):
-        print resp.toXml()
         self.fields = []
         graphicals = []
         form = resp.firstChildElement().firstChildElement().firstChildElement()
