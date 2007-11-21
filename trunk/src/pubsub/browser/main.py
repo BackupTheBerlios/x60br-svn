@@ -236,11 +236,13 @@ class Login:
                                  "close" : lambda _1,_2: reactor.stop()
                                   } )
 
+        """
         self.username.set_text("pablo")
         self.password.set_text("pablo")
         self.host.set_text("pablo-desktop")
         self.component.set_text("pubsub")
         self.port.set_text('5225')
+        """
     
     def run(self):
         self.d = defer.Deferred()
