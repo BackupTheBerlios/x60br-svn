@@ -1,6 +1,4 @@
-#from twisted.internet import gtk2reactor # for gtk-2.0
-#gtk2reactor.install()
-
+import types
 from twisted.internet import reactor,defer
 
 
@@ -8,11 +6,12 @@ from twisted.words.protocols.jabber import client, jid, xmlstream
 from twisted.words.xish import domish
 
 from pubsub.browser.utils import DISCO_ITEMS_NS, GLADE_FILE, PUBSUB_NS, DISCO_INFO_NS
-from pubsub.browser.utils import PUBSUB_OWNER_NS, JABBER_X_DATA_NS, print_err
+from pubsub.browser.utils import PUBSUB_OWNER_NS, JABBER_X_DATA_NS 
 
 
 
 class Affiliation:
+    """I represent an affiliation to a pubsub node"""
     def __init__(self,xml):
         if xml.name != 'affiliation':
             raise Exception("Expected an <affiliation/> element, got " + xml.name)
@@ -32,7 +31,9 @@ class Affiliation:
         
 
 class Subscription:
+    """I represent a subscription to a pubsub node"""
     def __init__(self,xml):
+        print xml.toXml()
         if xml.name != 'subscription':
             raise Exception("Expected an <affiliation/> element, got " + xml.name)
         self.xml = xml
@@ -51,14 +52,15 @@ class Subscription:
     
     subscription = property(get_subscription,None)
     jid = property(get_jid,None)
+    subid = property(get_subid,None)
         
         
 
 class PubSubNode:
+    """A pubsub node as specified in XEP-0060"""
     def __init__(self,pubsub,node_name):
         self.pubsub = pubsub
         self.name = node_name
-        
         
         
     def get_affiliations(self):
@@ -85,26 +87,49 @@ class PubSubNode:
     
     
     def remove_subscription(self,subscription):
+        """Remove the given subscription 
+        
+        @type subscription:  L{Subscription} | Tuple (jid,subid)
+        @arg  subscription: the subscription to remove. 
+        """
+        if isinstance(subscription,Subscription):
+            jid = subscription.jid
+            if subscription.has_subid():
+                subid = subscription.subid
+            else:
+                subid = None
+            
+        elif isintance(subscription,types.TupleType):
+            jid,subid = subscription
+        else:
+            raise Exception("Wrong argument type, expected Subscription or tuple, get " + type(subscription))
+            
+        
         req = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
         subscriptions = domish.Element((None,'subscriptions'),attribs={'node':self.name})
         req.addChild(subscriptions)
         subs = subscriptions.addChild(domish.Element((None,'subscription'),attribs={
-                                                                       'jid':subscription.jid,
+                                                                       'jid':jid,
                                                                        'subscription':'none'
                                                                            }))
-        if subscription.has_subid():
-            subs['subid'] = subscription.get_subid()
+        if subid is not None:
+            subs['subid'] = subid
         d = self.pubsub.send_iq("set",req)
         return d
 
     
     
     def remove_affiliation(self,affiliation):    
+        
+        if isinstance(affiliation,Affiliation):
+            jid = affiliation.jid
+        else:
+            jid = affiliation
         req = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
         affiliations = domish.Element((None,'affiliations'),attribs={'node':self.name})
         req.addChild(affiliations)
         aff = affiliations.addChild(domish.Element((None,'affiliation'),attribs={
-                                                                       'jid':affiliation.jid,
+                                                                       'jid':jid,
                                                                        'affiliation':'none'    
                                                                            }))
         d = self.pubsub.send_iq("set",req)
@@ -164,7 +189,22 @@ class PubSubLeafNode(PubSubNode):
         PubSubNode.__init__(self,pubsub,node_name)
         
     def publish(self,item):
-        pass
+        """
+        @type item domish.Element | domish.Element list
+        """
+        ps = domish.Element((PUBSUB_NS,"pubsub"))
+        publish = ps.addChild(domish.Element((None,'publish'),attribs={'node' : self.name}))
+        if isinstance(item,types.ListType)  or isinstance(item,types.TupleType):
+            for i in item:
+                publish.addRawXml(i)
+        else:
+            publish.addRawXml(item)
+            
+            
+        print ps.toXml()
+        return self.pubsub.send_iq("set",ps)
+       
+        
     
     def __str__(self):
         return "[Leaf '" + self.name + "']"
@@ -254,7 +294,6 @@ class PubSub:
         
         d = self._create_node(True, name, parent_collection, configuration_fields)
         d.addCallback(node_created)
-        d.addErrback(print_err)
         return d
 
     def create_leaf_node(self,name=None,parent_collection=None,configuration_fields=None):
@@ -269,7 +308,6 @@ class PubSub:
         
         d = self._create_node(False, name, parent_collection, configuration_fields)
         d.addCallback(node_created)
-        d.addErrback(print_err)
         return d
     
 
@@ -288,7 +326,6 @@ class PubSub:
                         raise Exception("Unknown node-type:", item['type'])
             raise Exception("no node-type information")        
         d.addCallback(build_node_from_info)
-        d.addErrback(print_err)
         return d
         
         
