@@ -1,11 +1,21 @@
+""" 
+@author:Pablo Polvorin
+@contact:pablo.polvorin@gmail.com
+
+
+Functions for accessing a U{XEP-0060<http://www.xmpp.org/extensions/xep-0060.html>} service.
+Most of the api is coded following the U{twisted<http://www.twistedmatrix.com>} asynchronous way; 
+the methods perform an IQ call to the server and then return a Deferred, whitout blocking the caller. 
+
+"""
+
 import types
 from twisted.internet import reactor,defer
-
 
 from twisted.words.protocols.jabber import client, jid, xmlstream
 from twisted.words.xish import domish
 
-from pubsub.browser.utils import DISCO_ITEMS_NS, GLADE_FILE, PUBSUB_NS, DISCO_INFO_NS
+from pubsub.browser.utils import DISCO_ITEMS_NS, PUBSUB_NS, DISCO_INFO_NS
 from pubsub.browser.utils import PUBSUB_OWNER_NS, JABBER_X_DATA_NS 
 
 
@@ -64,6 +74,10 @@ class PubSubNode:
         
         
     def get_affiliations(self):
+        """
+        @rtype: list of L{Affiliation} (Deferred)
+        """
+
         query = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
         query.addChild(domish.Element((None,'affiliations'),attribs={'node':self.name}))
         d = self.pubsub.send_iq("get",query)
@@ -75,6 +89,9 @@ class PubSubNode:
         return d
     
     def get_subscriptions(self):
+        """
+        @rtype: list of L{Subscription} (Deferred)
+        """
         query = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
         query.addChild(domish.Element((None,'subscriptions'),attribs={'node':self.name}))
         d = self.pubsub.send_iq("get",query)
@@ -87,10 +104,9 @@ class PubSubNode:
     
     
     def remove_subscription(self,subscription):
-        """Remove the given subscription 
-        
-        @type subscription:  L{Subscription} | Tuple (jid,subid)
-        @arg  subscription: the subscription to remove. 
+        """
+        @param subscription: subscription to remove
+        @type subscription:  L{Subscription} or tuple (jid,subid)
         """
         if isinstance(subscription,Subscription):
             jid = subscription.jid
@@ -120,7 +136,10 @@ class PubSubNode:
     
     
     def remove_affiliation(self,affiliation):    
-        
+        """
+        @param affiliation: affiliation to remove
+        @type affiliation: L{Affiliation} or str
+        """
         if isinstance(affiliation,Affiliation):
             jid = affiliation.jid
         else:
@@ -138,6 +157,13 @@ class PubSubNode:
     
         
     def add_affiliation(self,jid,affiliation):
+        """
+        @param jid: jid
+        @type jid: str
+        @param affiliation: affiliation
+        @type affiliation: str
+        @rtype: L{Affiliation}
+        """
         req = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
         affiliations = domish.Element((None,'affiliations'),attribs={'node':self.name})
         req.addChild(affiliations)
@@ -151,6 +177,13 @@ class PubSubNode:
 
     
     def add_subscription(self,jid,subscription):
+        """
+        @param jid:jid
+        @type jid: str
+        @param subscription: subscription
+        @type subscription: str
+        @rtype: L{Subscription}
+        """
         req = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
         subscriptions = domish.Element((None,'subscriptions'),attribs={'node':self.name})
         req.addChild(subscriptions)
@@ -167,6 +200,14 @@ class PubSubNode:
         return d
         
     
+    def get_items(self):
+        items = domish.Element((None,'items'), attribs={'node':self.name})
+        req = domish.Element((PUBSUB_NS, "pubsub"))
+        req.addChild(items)
+        d = self.pubsub.send_iq("get",req)
+        return d
+                             
+    
     def get_configuration_form(self):    
         pass
     
@@ -175,6 +216,11 @@ class PubSubNode:
     
     
     def delete(self):
+        """
+        Delete this node.
+        
+        After a successfull call to this method, this object must be discarded
+        """
         ps = domish.Element((PUBSUB_OWNER_NS,"pubsub"))
         ps.addChild(domish.Element((None,'delete'),attribs={'node' : self.name}))
         return self.pubsub.send_iq("set",ps)
@@ -190,7 +236,10 @@ class PubSubLeafNode(PubSubNode):
         
     def publish(self,item):
         """
-        @type item domish.Element | domish.Element list
+        Used for testing only, will be refactored.
+                 
+        @param item: the item to publish
+        @type item: str
         """
         ps = domish.Element((PUBSUB_NS,"pubsub"))
         publish = ps.addChild(domish.Element((None,'publish'),attribs={'node' : self.name}))
@@ -238,7 +287,16 @@ class PubSubCollectionNode(PubSubNode):
 
 
 class PubSub:
-    def __init__(self,xmlstream,pubsub_component):        
+    """
+    Entry point to work with the api
+    """
+    def __init__(self,xmlstream,pubsub_component):  
+        """
+        @param pubsub_component: name of the pubsub component
+        
+        @param xmlstream: stream already connected and authenticated with the server
+        @type xmlstream: xmlstream (twisted.words)
+        """      
         self.xmlstream = xmlstream
         self.pubsub_component = pubsub_component
        
@@ -283,6 +341,15 @@ class PubSub:
     
         
     def create_collection_node(self,name=None,parent_collection=None,configuration_fields=None):
+        """
+        Creates a collection pubsub node.
+
+        @type parent_collection: L{PubSubCollectionNode}
+        
+        @rtype: L{PubSubCollectionNode} (Deferred)
+        @return: The created node
+
+        """
         def node_created(resp):
             try:
                 assigned_name = resp.pubsub.create['node']
@@ -297,6 +364,20 @@ class PubSub:
         return d
 
     def create_leaf_node(self,name=None,parent_collection=None,configuration_fields=None):
+        """
+        Creates a leaf pubsub node.
+        
+        If name is not given, the server will assign one. 
+        Note that even when a name is explicitly supplied, 
+        the resulting node can still get a different one, 
+        as the server is allowed to change it. 
+
+        @type parent_collection: L{PubSubCollectionNode}
+        
+       
+        @return: The created node
+        @rtype: L{PubSubLeafNode} (Deferred)        
+        """
         def node_created(resp):
             try:
                 assigned_name = resp.pubsub.create['node']
@@ -351,6 +432,10 @@ class PubSub:
         return response
         
     def get_root_nodes(self):
+        """
+        @return: list of top-level nodes 
+        @rtype: list L{PubSubNode} (Deferred)
+        """
         return self._get_child_nodes_of(None)
         
     

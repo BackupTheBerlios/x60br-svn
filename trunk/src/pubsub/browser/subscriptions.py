@@ -111,6 +111,7 @@ class NodeSubscriptionsDlg:
         def _on_subscriptions(subscriptions):
             for subscription in subscriptions:
                 self.mapping[subscription] = self.model.append((subscription,subscription.jid,subscription.subscription))
+
         
         d.addCallback(_on_subscriptions)
         d.addErrback(print_err)

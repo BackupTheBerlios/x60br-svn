@@ -29,7 +29,20 @@ from pubsub.browser.createnode import CreateNodeDlg
         
 from pubsub import pubsubapi
 
-
+class ShowItemsDlg:
+    def __init__(self, Element):
+        tree = gtk.glade.XML(GLADE_FILE,"showItemsDlg") 
+        
+        tree.signal_autoconnect({"on_response" : self._on_response})
+        self.dlg = tree.get_widget("showItemsDlg")
+        tree.get_widget("text").get_buffer().set_text(Element.toXml())
+    
+    def show(self):   
+        self.dlg.show()
+   
+    def _on_response(self,dlg,resp):
+        self.dlg.destroy()
+       
         
 
 class Browser:
@@ -39,6 +52,7 @@ class Browser:
         window.show()
         self.xmlstream = xmlstream
         self.component = component
+        print xmlstream,component
         
         self.pubsub = pubsubapi.PubSub(xmlstream, component)
         
@@ -50,6 +64,7 @@ class Browser:
                                  "on_force_refresh_clicked" : lambda _ : reactor.callFromThread(self.refresh_tree),
                                  "on_new_toplevel_node_button_clicked" : lambda _ : create_top_level()
                                  })
+
 
         node_view = tree.get_widget("node_tree")
         
@@ -83,12 +98,13 @@ class Browser:
                                       "on_subscriptions_activate" : self._on_node_subscriptions,
                                       "on_delete_node_activate":self._on_delete_node,
                                       "on_add_child_activate" : self._on_create_node,
+                                      "on_publish_item_activate" : self._on_publish_item,
+                                      "on_getitems_activate" : self._on_get_items
                                       })
 
         
         self.collection_node_pixbuf = gtk.gdk.pixbuf_new_from_file('gui/collection_node.png')
         self.leaf_node_pixbuf = gtk.gdk.pixbuf_new_from_file('gui/leaf_node.png')
-    
     
         self.mapping = {}
         self.refresh_tree()
@@ -139,8 +155,17 @@ class Browser:
         if selected is not None:
             dlg = NodeSubscriptionsDlg(self.xmlstream,selected,self.component)
             dlg.show()
-        
-
+    
+    def _on_get_items(self, evt):
+        def response(Element):
+            dlg = ShowItemsDlg(Element)
+            dlg.show()
+            
+        selected = self._selected_node()
+        if selected is not None:
+            d = selected.get_items()
+            d.addCallback(response)
+            d.addErrback(print_err)
 
 
     def _on_configure_node(self,evt):
@@ -160,7 +185,24 @@ class Browser:
                 del self.mapping[selected]
             d.addCallback(node_deleted)
             d.addErrback(print_err)
+         
+         
+    def _on_publish_item(self,evt):   
+        selected = self._selected_node()
+        dlgTree = gtk.glade.XML(GLADE_FILE,"publishItemDlg")
+        dlg  = dlgTree.get_widget("publishItemDlg")
+        
+        
+        def on_response(dlg,response):
+            if response == gtk.RESPONSE_OK:
+                text = dlgTree.get_widget("text")
+                selected.publish(text.get_buffer().get_property("text"))
+            dlg.destroy()
             
+        dlgTree.signal_autoconnect({"response" : on_response})
+        dlg.show()
+        
+        
 
     def _on_create_node(self,evt):
         selected = self._selected_node()
@@ -236,13 +278,13 @@ class Login:
                                  "close" : lambda _1,_2: reactor.stop()
                                   } )
 
-        """
+        
         self.username.set_text("pablo")
         self.password.set_text("pablo")
-        self.host.set_text("pablo-desktop")
+        self.host.set_text("localhost")
         self.component.set_text("pubsub")
-        self.port.set_text('5225')
-        """
+        self.port.set_text('5222')
+        
     
     def run(self):
         self.d = defer.Deferred()

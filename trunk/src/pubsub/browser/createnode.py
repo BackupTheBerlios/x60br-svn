@@ -31,7 +31,7 @@ class CreateNodeDlg:
     
         
         self._request_leaf_form()
-        
+        self.fields = []
     
     def show(self):   
         self.dlg.show()
