@@ -62,11 +62,14 @@ class Browser:
         tree.signal_autoconnect({"window_destroy" : lambda _ : reactor.stop(),
                                  "on_node_tree_button_press_event" : self._on_node_tree_button_press_event,
                                  "on_force_refresh_clicked" : lambda _ : reactor.callFromThread(self.refresh_tree),
-                                 "on_new_toplevel_node_button_clicked" : lambda _ : create_top_level()
+                                 "on_new_toplevel_node_button_clicked" : lambda _ : create_top_level(),
+                                 "on_change_component_button_clicked" : self._on_change_component
                                  })
 
 
         node_view = tree.get_widget("node_tree")
+        
+        tree.get_widget("pubsub_component_entry").set_text(component)
         
         node_view.get_selection().connect("changed",self._on_selection_changed)
         
@@ -107,6 +110,7 @@ class Browser:
         self.leaf_node_pixbuf = gtk.gdk.pixbuf_new_from_file('gui/leaf_node.png')
     
         self.mapping = {}
+        self.tree = tree
         self.refresh_tree()
         
 
@@ -229,6 +233,11 @@ class Browser:
         dlg = CreateNodeDlg(self,on_response)
         dlg.show()
         
+        
+    def _on_change_component(self, evt):
+        component = self.tree.get_widget("pubsub_component_entry").get_text()
+        self.pubsub.set_component(component)
+        self.refresh_tree()
         
 
     def refresh_tree(self):

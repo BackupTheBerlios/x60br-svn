@@ -301,6 +301,9 @@ class PubSub:
         self.pubsub_component = pubsub_component
        
        
+    def set_component(self, component):
+        self.pubsub_component = component
+        
     def _create_node(self,is_collection,name=None,parent_collection=None,configuration_fields=None):
         ps = domish.Element((PUBSUB_NS,"pubsub"))
         create = ps.addElement((None,'create'))
